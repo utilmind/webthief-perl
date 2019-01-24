@@ -1,0 +1,171 @@
+#!/usr/bin/perl
+#                HTTP_GET Perl CGI library
+#                -------------------------
+#          File: httpget.lib
+#        Author: Aleksey Kuznetsov
+#     Copyright: (c) UtilMind Solutions, 1999
+#           Web: http://www.utilmind.com/
+#       Support: info@utilmind.com
+#       Version: 1.01
+# Last modified: August 12, 1999
+#
+# COPYRIGHT NOTICE:
+#
+# Copyright 1999 UtilMind Solutions. All Rights Reserved.
+#
+# Since 2019 published under MIT license.
+#
+# Selling the code for this program without prior written consent is
+# expressly forbidden. Obtain permission before redistributing this
+# program over the Internet or in any other medium. In all cases
+# copyright and header must remain intact.
+#
+# =====================================================================
+
+##############################################################################
+# Define variables for this library.                                         #
+# Variables will specify HTTP environment.                                   #
+
+$http_accept = 'image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, application/vnd.ms-excel, application/msword, */*';
+$http_accept_encoding = 'gzip, deflate';
+$http_connection = 'Keep-Alive';
+
+# Please don't change next line if not needed
+$http_user_agent = 'UtilMind Spider (www.utilmind.com)';
+
+# Done                                                                       #
+##############################################################################
+
+##############################################################################
+# Subroutine:    &HTTP_GET                                                   #
+# Description:   This routine divides query string (url address) and         #
+#                receives data being on url address in web. After receiving, #
+#                this routine will divide data to header and body.           #
+#                                                                            #
+# Usage:         &HTTP_GET(query_string)                                     #
+# Returns:       header and body of received data.                           #
+#                                                                            #
+# Example:       ($head, $body) = &HTTP_GET('www.utilmind.com')              #
+##############################################################################
+sub HTTP_GET {
+  local($query) = $_[0];
+  if (substr($query, 0, 7) eq 'http://') { # http:// don't needed here
+    $query = substr($query, 7, length($query) - 7);
+  }
+  local($server, $document, $head);
+
+  ## Split the remote host name and document path
+  ($server, $dummy) = split(/\//, $query);
+  $document = substr($query, length($server), length($query)-length($server));
+
+  $dummy = $document;
+  $dummy =~ s/\.//g;
+
+  if ($dummy eq $document) {
+    if (substr($document, length($document), 1) ne '/') {
+      $document = "$document/";
+    }
+  }
+
+  $head = &HTTP_GET_FILE($server, $document, 'GET'); # Receive data from the web
+
+  $head;
+}
+
+
+##############################################################################
+# Subroutine:    &HTTP_GET_HEADER                                            #
+# Description:   This routine divides query string (url address) and         #
+#                receives the header of data being on url address in web.    #
+#                                                                            #
+# Usage:         &HTTP_GET_HEADER(query_string)                              #
+# Returns:       header and body of received data.                           #
+#                                                                            #
+# Example:       ($header) = &HTTP_GET_HEADER('www.utilmind.com')            #
+##############################################################################
+sub HTTP_GET_HEADER {
+  local($query) = $_[0];
+  if (substr($query, 0, 7) eq 'http://') { # http:// don't needed here
+    $query = substr($query, 7, length($query) - 7);
+  }
+  local($server, $document, $data, $head, $body);
+
+  ## Split the remote host name and document path
+  ($server, $dummy) = split(/\//, $query);
+  $document = substr($query, length($server), length($query)-length($server));
+
+  $dummy = $document;
+  $dummy =~ s/\.//g;
+
+  if ($dummy eq $document) {
+    if (substr($document, length($document), 1) ne '/') {
+      $document = "$document/";
+    }
+  }
+
+  $data = &HTTP_GET_FILE($server, $document, 'HEAD'); # Receive header of data from the web
+
+  ($head, $body) = split(/\n\r/, $data);
+  $body = substr($data, length($head)+3, length($data)-length($head)-3);
+
+  return($head, $body);
+}
+
+
+##############################################################################
+# Subroutine:    &HTTP_GET_FILE                                              #
+# Description:   This routine receives data from web.                        #
+#                                                                            #
+# Usage:         &HTTP_FILE(server, document, method)                        #
+# Returns:       received data                                               #
+#                                                                            #
+# Example: $data = &HTTP_GET_FILE('www.utilmind.com', '/dir/file.ext', 'GET')#
+##############################################################################
+sub HTTP_GET_FILE {
+ sub TCP { join("", getprotobyname('tcp')); }
+ sub SENDcmd { $request = $request . "$_[0]\r\n"; }
+
+  # Localize the variables and read from web they wish to have returned.
+
+  local($server, $document, $method) = @_;
+  local($data, $request);
+
+  if ($server =~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+    @addrs = pack('C4', split(/\./,$server));
+  } else {
+    ($dummy,$dummy,$dummy,$dummy, @addrs) = gethostbyname($server);
+  }
+  $remote = pack("S n a4 x8", 2, 80, $addrs[0]);
+
+  socket(S, 2, 1, &TCP) || die "Socket error: $!";
+  connect(S, $remote) || &Error404("Can't resolve hostname to IP address: $server");
+  select(S); $| = 1;
+  select(STDOUT); $| = 1;
+
+  $request = "$method $document HTTP/1.0\r\n";
+
+  # Sending http parameters
+  SENDcmd("ACCEPT: $http_accept");
+  SENDcmd("ACCEPT_ENCODING: $http_accept_encoding");
+  SENDcmd("CONNECTION: $http_connection");
+  SENDcmd("HOST: $server");
+  SENDcmd("USER_AGENT: $http_user_agent");
+  SENDcmd("REFERER: $http_referer");
+
+  $request = $request . "\r\n";
+  print S $request;
+
+  while (sysread(S, $data, 65535)) {
+       $resul .= $data; 
+  }  
+  close(S) || die "close: $!";
+
+$resul;
+}
+
+sub Error404 {
+  print @_;
+  exit;
+}
+
+# End of HTTP_GET
